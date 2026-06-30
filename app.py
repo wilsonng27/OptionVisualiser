@@ -53,12 +53,16 @@ def build_liquidity_filtered_reference(data, spot):
     if not near_spot:
         return []
 
-    avg_gross_gex = sum(row["abs_gross_gex"] for row in near_spot) / len(near_spot)
-    avg_total_oi = sum(row["total_oi"] for row in near_spot) / len(near_spot)
-    avg_total_volume = sum(row["total_volume"] for row in near_spot) / len(near_spot)
+    liquid_near_spot = [row for row in near_spot if row["total_oi"] > 0 or row["total_volume"] > 0]
+    if not liquid_near_spot:
+        return []
+
+    avg_gross_gex = sum(row["abs_gross_gex"] for row in liquid_near_spot) / len(liquid_near_spot)
+    avg_total_oi = sum(row["total_oi"] for row in liquid_near_spot) / len(liquid_near_spot)
+    avg_total_volume = sum(row["total_volume"] for row in liquid_near_spot) / len(liquid_near_spot)
 
     filtered = [
-        row for row in near_spot
+        row for row in liquid_near_spot
         if row["abs_gross_gex"] >= (avg_gross_gex * 0.35)
         and (
             row["total_oi"] >= max(100, avg_total_oi * 0.3)
@@ -66,7 +70,7 @@ def build_liquidity_filtered_reference(data, spot):
         )
     ]
 
-    return filtered if filtered else near_spot
+    return filtered if filtered else liquid_near_spot
 
 
 def build_peak_payload(row, side):
@@ -83,6 +87,21 @@ def build_peak_payload(row, side):
         "put_vol": int(row["put_vol"]),
         "total_volume": int(row["total_volume"]),
     }
+
+
+def select_peak_levels(reference_strikes):
+    if not reference_strikes:
+        return None, None, 0, 0
+
+    positive_rows = [row for row in reference_strikes if row["total_gex"] > 0]
+    negative_rows = [row for row in reference_strikes if row["total_gex"] < 0]
+
+    peak_call = max(positive_rows, key=lambda row: row["total_gex"]) if positive_rows else None
+    peak_put = min(negative_rows, key=lambda row: row["total_gex"]) if negative_rows else None
+
+    call_wall = peak_call["strike"] if peak_call else 0
+    put_wall = peak_put["strike"] if peak_put else 0
+    return peak_call, peak_put, call_wall, put_wall
 
 def calculate_greeks(S, K, T, r, sigma, option_type):
     if T <= 0 or sigma <= 0:
@@ -144,6 +163,9 @@ def get_flow():
             c_volume = int(safe_number(call.get('volume'), 0))
             p_volume = int(safe_number(put.get('volume'), 0))
 
+            if (c_oi + p_oi) == 0 and (c_volume + p_volume) == 0:
+                continue
+
             c_delta, c_gamma, c_theta, vega = calculate_greeks(current_price, strike, T, r, c_iv, 'call')
             p_delta, p_gamma, p_theta, _ = calculate_greeks(current_price, strike, T, r, p_iv, 'put')
 
@@ -177,16 +199,10 @@ def get_flow():
         peak_put = None
 
         if reference_strikes:
-            peak_call = max(reference_strikes, key=lambda x: x['call_gex'])
-            peak_put = min(reference_strikes, key=lambda x: x['put_gex'])
-            call_wall = peak_call['strike']
-            put_wall = peak_put['strike']
+            peak_call, peak_put, call_wall, put_wall = select_peak_levels(reference_strikes)
             zero_gamma = min(reference_strikes, key=lambda x: abs(x['total_gex']))['strike']
         else:
-            peak_call = max(data, key=lambda x: x['call_gex']) if data else None
-            peak_put = min(data, key=lambda x: x['put_gex']) if data else None
-            call_wall = peak_call['strike'] if peak_call else 0
-            put_wall = peak_put['strike'] if peak_put else 0
+            peak_call, peak_put, call_wall, put_wall = select_peak_levels(data)
             zero_gamma = 0
 
         return jsonify({
