@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import numpy as np
+import pandas as pd
 import requests
 import yfinance as yf
 from flask import Flask, jsonify, request
@@ -18,6 +19,8 @@ session.headers.update({
         "Chrome/120.0.0.0 Safari/537.36"
     )
 })
+YAHOO_OPTIONS_URL = "https://query1.finance.yahoo.com/v7/finance/options/{symbol}"
+CBOE_OPTIONS_URL = "https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json"
 
 
 def safe_number(value, default=0.0):
@@ -43,6 +46,126 @@ def get_current_price(ticker):
         return float(history["Close"].dropna().iloc[-1])
 
     raise ValueError("Unable to determine current price.")
+
+
+def fetch_chain_from_yahoo_endpoint(ticker_symbol, requested_expiration=None):
+    base_response = session.get(
+        YAHOO_OPTIONS_URL.format(symbol=ticker_symbol),
+        timeout=8,
+    )
+    base_response.raise_for_status()
+    base_payload = base_response.json()
+    result = (base_payload.get("optionChain", {}).get("result") or [None])[0]
+    if not result:
+        raise ValueError("No options data returned from Yahoo endpoint.")
+
+    expiration_timestamps = result.get("expirationDates") or []
+    if not expiration_timestamps:
+        raise ValueError("No expiration dates returned from Yahoo endpoint.")
+
+    expiration_map = {
+        datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d"): ts
+        for ts in expiration_timestamps
+    }
+    expirations = sorted(expiration_map.keys())
+    selected_expiration = requested_expiration if requested_expiration in expiration_map else expirations[0]
+    selected_timestamp = expiration_map[selected_expiration]
+
+    if selected_expiration == expirations[0]:
+        selected_result = result
+    else:
+        dated_response = session.get(
+            YAHOO_OPTIONS_URL.format(symbol=ticker_symbol),
+            params={"date": selected_timestamp},
+            timeout=8,
+        )
+        dated_response.raise_for_status()
+        dated_payload = dated_response.json()
+        selected_result = (dated_payload.get("optionChain", {}).get("result") or [None])[0]
+        if not selected_result:
+            raise ValueError("No dated options data returned from Yahoo endpoint.")
+
+    options_block = (selected_result.get("options") or [None])[0]
+    if not options_block:
+        raise ValueError("No options chain returned from Yahoo endpoint.")
+
+    current_price = (
+        safe_number(selected_result.get("quote", {}).get("regularMarketPrice"))
+        or safe_number(selected_result.get("quote", {}).get("postMarketPrice"))
+        or safe_number(selected_result.get("quote", {}).get("preMarketPrice"))
+        or safe_number(selected_result.get("quote", {}).get("regularMarketPreviousClose"))
+    )
+    if not current_price:
+        raise ValueError("Unable to determine current price from Yahoo endpoint.")
+
+    calls = pd.DataFrame(options_block.get("calls") or [])
+    puts = pd.DataFrame(options_block.get("puts") or [])
+    if calls.empty or puts.empty:
+        raise ValueError("Yahoo endpoint returned an empty call or put chain.")
+
+    return current_price, expirations, selected_expiration, calls, puts
+
+
+def parse_cboe_option_symbol(option_symbol):
+    root = option_symbol[:-15]
+    expiry_raw = option_symbol[-15:-9]
+    option_type = option_symbol[-9]
+    strike_raw = option_symbol[-8:]
+    expiration = datetime.strptime(expiry_raw, "%y%m%d").strftime("%Y-%m-%d")
+    strike = int(strike_raw) / 1000
+    return root, expiration, option_type, strike
+
+
+def fetch_chain_from_cboe(ticker_symbol, requested_expiration=None):
+    response = session.get(
+        CBOE_OPTIONS_URL.format(symbol=ticker_symbol),
+        timeout=8,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    data_block = payload.get("data") or {}
+    rows = data_block.get("options") or []
+    if not rows:
+        raise ValueError("No options rows returned from CBOE.")
+
+    current_price = safe_number(data_block.get("current_price")) or safe_number(data_block.get("close"))
+    if not current_price:
+        raise ValueError("Unable to determine current price from CBOE.")
+
+    parsed_rows = []
+    expiration_set = set()
+    for row in rows:
+        option_symbol = row.get("option")
+        if not option_symbol:
+            continue
+        _, expiration, option_type, strike = parse_cboe_option_symbol(option_symbol)
+        expiration_set.add(expiration)
+        parsed_rows.append({
+            "expiration": expiration,
+            "option_type": option_type,
+            "strike": float(strike),
+            "impliedVolatility": safe_number(row.get("iv")),
+            "openInterest": int(safe_number(row.get("open_interest"), 0)),
+            "volume": int(safe_number(row.get("volume"), 0)),
+            "lastPrice": safe_number(row.get("last_trade_price")),
+            "gamma": safe_number(row.get("gamma")),
+        })
+
+    expirations = sorted(expiration_set)
+    if not expirations:
+        raise ValueError("No expirations parsed from CBOE options feed.")
+
+    selected_expiration = requested_expiration if requested_expiration in expirations else expirations[0]
+    selected_rows = [row for row in parsed_rows if row["expiration"] == selected_expiration]
+    if not selected_rows:
+        raise ValueError("No rows matched the selected CBOE expiration.")
+
+    calls = pd.DataFrame([row for row in selected_rows if row["option_type"] == "C"])
+    puts = pd.DataFrame([row for row in selected_rows if row["option_type"] == "P"])
+    if calls.empty or puts.empty:
+        raise ValueError("Selected CBOE expiration has empty call or put rows.")
+
+    return current_price, expirations, selected_expiration, calls, puts
 
 
 def build_liquidity_filtered_reference(data, spot):
@@ -73,7 +196,7 @@ def build_liquidity_filtered_reference(data, spot):
     return filtered if filtered else liquid_near_spot
 
 
-def build_peak_payload(row, side):
+def build_level_payload(row, side):
     if not row:
         return None
 
@@ -87,21 +210,6 @@ def build_peak_payload(row, side):
         "put_vol": int(row["put_vol"]),
         "total_volume": int(row["total_volume"]),
     }
-
-
-def select_peak_levels(reference_strikes):
-    if not reference_strikes:
-        return None, None, 0, 0
-
-    positive_rows = [row for row in reference_strikes if row["total_gex"] > 0]
-    negative_rows = [row for row in reference_strikes if row["total_gex"] < 0]
-
-    peak_call = max(positive_rows, key=lambda row: row["total_gex"]) if positive_rows else None
-    peak_put = min(negative_rows, key=lambda row: row["total_gex"]) if negative_rows else None
-
-    call_wall = peak_call["strike"] if peak_call else 0
-    put_wall = peak_put["strike"] if peak_put else 0
-    return peak_call, peak_put, call_wall, put_wall
 
 def calculate_greeks(S, K, T, r, sigma, option_type):
     if T <= 0 or sigma <= 0:
@@ -126,26 +234,37 @@ def calculate_greeks(S, K, T, r, sigma, option_type):
 def get_flow():
     ticker_symbol = request.args.get('ticker', 'SPY').upper()
     requested_exp = request.args.get('expiration', None)
-    ticker = yf.Ticker(ticker_symbol, session=session)
 
     try:
-        current_price = get_current_price(ticker)
-        expirations = list(ticker.options)
+        try:
+            current_price, expirations, exp_date, calls, puts = fetch_chain_from_cboe(
+                ticker_symbol,
+                requested_exp,
+            )
+        except Exception:
+            try:
+                current_price, expirations, exp_date, calls, puts = fetch_chain_from_yahoo_endpoint(
+                    ticker_symbol,
+                    requested_exp,
+                )
+            except Exception:
+                ticker = yf.Ticker(ticker_symbol, session=session)
+                current_price = get_current_price(ticker)
+                expirations = list(ticker.options)
 
-        if not expirations:
-            return jsonify({"error": "No options found."})
+                if not expirations:
+                    return jsonify({"error": "No options found."})
 
-        exp_date = requested_exp if requested_exp in expirations else expirations[0]
-        chain = ticker.option_chain(exp_date)
+                exp_date = requested_exp if requested_exp in expirations else expirations[0]
+                chain = ticker.option_chain(exp_date)
+                calls = chain.calls
+                puts = chain.puts
 
         expiry_dt = datetime.strptime(exp_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
         now_utc = datetime.now(timezone.utc)
         days_to_exp = max((expiry_dt - now_utc).total_seconds() / 86400, 0)
         T = max(days_to_exp / 365.0, 0.001)
         r = 0.05
-
-        calls = chain.calls
-        puts = chain.puts
 
         data = []
         common_strikes = set(calls['strike']).intersection(set(puts['strike']))
@@ -162,18 +281,23 @@ def get_flow():
             p_last = safe_number(put.get('lastPrice'))
             c_volume = int(safe_number(call.get('volume'), 0))
             p_volume = int(safe_number(put.get('volume'), 0))
+            c_gamma_feed = safe_number(call.get('gamma'))
+            p_gamma_feed = safe_number(put.get('gamma'))
 
             if (c_oi + p_oi) == 0 and (c_volume + p_volume) == 0:
                 continue
 
             c_delta, c_gamma, c_theta, vega = calculate_greeks(current_price, strike, T, r, c_iv, 'call')
             p_delta, p_gamma, p_theta, _ = calculate_greeks(current_price, strike, T, r, p_iv, 'put')
+            c_gamma = c_gamma_feed if c_gamma_feed > 0 else c_gamma
+            p_gamma = p_gamma_feed if p_gamma_feed > 0 else p_gamma
 
             implied_forward = strike + (c_last - p_last) * np.exp(r * T)
 
-            # Express GEX as dollar gamma for a 1% underlying move, scaled to millions.
-            c_gex_val = float((c_gamma * c_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
-            p_gex_val = float((-p_gamma * p_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
+            # Keep the original project GEX convention because that is the version
+            # the user validated visually against their earlier deployment.
+            c_gex_val = float((c_gamma * c_oi * 100 * current_price) / 1_000_000)
+            p_gex_val = float((-p_gamma * p_oi * 100 * current_price) / 1_000_000)
             total_gex_val = float(c_gex_val + p_gex_val)
 
             data.append({
@@ -194,15 +318,21 @@ def get_flow():
             })
 
         net_gex = sum(d['total_gex'] for d in data)
-        reference_strikes = build_liquidity_filtered_reference(data, current_price)
-        peak_call = None
-        peak_put = None
+        call_wall_row = max(data, key=lambda x: x['call_gex']) if data else None
+        put_wall_row = min(data, key=lambda x: x['put_gex']) if data else None
+        call_wall = call_wall_row['strike'] if call_wall_row else 0
+        put_wall = put_wall_row['strike'] if put_wall_row else 0
 
-        if reference_strikes:
-            peak_call, peak_put, call_wall, put_wall = select_peak_levels(reference_strikes)
-            zero_gamma = min(reference_strikes, key=lambda x: abs(x['total_gex']))['strike']
+        valid_strikes = [d for d in data if (0.90 * current_price) <= d['strike'] <= (1.10 * current_price)]
+        if valid_strikes:
+            avg_gross_gex = sum(d['abs_gross_gex'] for d in valid_strikes) / len(valid_strikes)
+            institutional_strikes = [d for d in valid_strikes if d['abs_gross_gex'] > (avg_gross_gex * 0.5)]
+
+            if institutional_strikes:
+                zero_gamma = min(institutional_strikes, key=lambda x: abs(x['total_gex']))['strike']
+            else:
+                zero_gamma = min(valid_strikes, key=lambda x: abs(x['total_gex']))['strike']
         else:
-            peak_call, peak_put, call_wall, put_wall = select_peak_levels(data)
             zero_gamma = 0
 
         return jsonify({
@@ -214,8 +344,8 @@ def get_flow():
             "call_wall": call_wall,
             "put_wall": put_wall,
             "zero_gamma": zero_gamma,
-            "peak_call": build_peak_payload(peak_call, "call"),
-            "peak_put": build_peak_payload(peak_put, "put"),
+            "call_wall_details": build_level_payload(call_wall_row, "call"),
+            "put_wall_details": build_level_payload(put_wall_row, "put"),
             "data": data
         })
 
@@ -224,4 +354,5 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
+
 
