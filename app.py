@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import time
 
 import numpy as np
 import pandas as pd
@@ -229,17 +230,32 @@ def home():
 def get_flow():
     ticker_symbol = request.args.get('ticker', 'SPY').upper()
     requested_exp = request.args.get('expiration', None)
+    started_at = time.perf_counter()
 
     try:
+        print(f"[flow] start ticker={ticker_symbol} requested_exp={requested_exp}", flush=True)
         try:
+            source_started = time.perf_counter()
             current_price, expirations, exp_date, calls, puts = fetch_chain_from_cboe(
                 ticker_symbol,
                 requested_exp,
             )
+            print(
+                f"[flow] source=cboe fetched in {time.perf_counter() - source_started:.2f}s "
+                f"exp={exp_date} calls={len(calls)} puts={len(puts)} spot={current_price}",
+                flush=True,
+            )
         except Exception:
+            print("[flow] cboe failed, falling back to yahoo endpoint", flush=True)
+            source_started = time.perf_counter()
             current_price, expirations, exp_date, calls, puts = fetch_chain_from_yahoo_endpoint(
                 ticker_symbol,
                 requested_exp,
+            )
+            print(
+                f"[flow] source=yahoo fetched in {time.perf_counter() - source_started:.2f}s "
+                f"exp={exp_date} calls={len(calls)} puts={len(puts)} spot={current_price}",
+                flush=True,
             )
 
         expiry_dt = datetime.strptime(exp_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -247,11 +263,13 @@ def get_flow():
         days_to_exp = max((expiry_dt - now_utc).total_seconds() / 86400, 0)
         T = max(days_to_exp / 365.0, 0.001)
         r = 0.05
+        print(f"[flow] greeks setup T={T:.6f} r={r}", flush=True)
 
         data = []
 
         # Avoid repeated DataFrame filtering inside the loop; it becomes very slow
         # on large chains and can make the API appear hung in the browser.
+        map_started = time.perf_counter()
         call_map = {
             float(row["strike"]): row
             for row in calls.to_dict("records")
@@ -263,7 +281,13 @@ def get_flow():
             if row.get("strike") is not None
         }
         common_strikes = sorted(set(call_map.keys()).intersection(set(put_map.keys())))
+        print(
+            f"[flow] maps built in {time.perf_counter() - map_started:.2f}s "
+            f"common_strikes={len(common_strikes)}",
+            flush=True,
+        )
 
+        loop_started = time.perf_counter()
         for strike in common_strikes:
             call = call_map[strike]
             put = put_map[strike]
@@ -311,6 +335,11 @@ def get_flow():
                 "implied_vol": float(round((c_iv + p_iv) / 2, 4)),
                 "implied_forward": float(round(implied_forward, 2))
             })
+        print(
+            f"[flow] strike loop completed in {time.perf_counter() - loop_started:.2f}s "
+            f"rows={len(data)}",
+            flush=True,
+        )
 
         net_gex = sum(d['total_gex'] for d in data)
         call_wall_row = max(data, key=lambda x: x['call_gex']) if data else None
@@ -329,6 +358,11 @@ def get_flow():
                 zero_gamma = min(valid_strikes, key=lambda x: abs(x['total_gex']))['strike']
         else:
             zero_gamma = 0
+        print(
+            f"[flow] summary net_gex={net_gex:.2f} call_wall={call_wall} put_wall={put_wall} "
+            f"zero_gamma={zero_gamma} total_time={time.perf_counter() - started_at:.2f}s",
+            flush=True,
+        )
 
         return jsonify({
             "ticker": ticker_symbol,
@@ -345,11 +379,11 @@ def get_flow():
         })
 
     except Exception as e:
+        print(f"[flow] error after {time.perf_counter() - started_at:.2f}s: {e}", flush=True)
         return jsonify({"error": str(e)})
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
-
 
 
 
