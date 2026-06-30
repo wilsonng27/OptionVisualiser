@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Option Visualiser</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #07111f;
+            --bg-elevated: rgba(10, 20, 34, 0.72);
+            --bg-panel: rgba(15, 26, 43, 0.88);
+            --bg-panel-strong: rgba(20, 34, 56, 0.96);
+            --line: rgba(255, 255, 255, 0.12);
+            --line-strong: rgba(255, 255, 255, 0.18);
+            --text: #f4f7fb;
+            --muted: #9fb0c8;
+            --muted-strong: #c9d5e5;
+            --accent: #7dd3fc;
+            --accent-strong: #38bdf8;
+            --accent-warm: #f59e0b;
+            --green: #34d399;
+            --red: #fb7185;
+            --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+            --radius-xl: 28px;
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --content-width: 1240px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--text);
+            font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(56, 189, 248, 0.24), transparent 28%),
+                radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 22%),
+                linear-gradient(180deg, #08111d 0%, #0a1626 42%, #07111f 100%);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+            background-size: 48px 48px;
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 78%);
+        }
+
+        .shell {
+            max-width: var(--content-width);
+            margin: 0 auto;
+            padding: 24px 20px 48px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 18px;
+            margin-bottom: 28px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: rgba(8, 14, 24, 0.5);
+            backdrop-filter: blur(18px);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-mark {
+            width: 34px;
+            height: 34px;
+            border-radius: 11px;
+            background:
+                linear-gradient(135deg, rgba(125, 211, 252, 0.9), rgba(56, 189, 248, 0.16)),
+                #0d1d31;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .brand-copy strong,
+        .hero-copy h1,
+        .metric-value,
+        .panel h2,
+        .insight-value {
+            letter-spacing: -0.03em;
+        }
+
+        .brand-copy strong {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .brand-copy span,
+        .topbar-note,
+        .eyebrow,
+        .hero-copy p,
+        .badge,
+        .status-row,
+        .metric-label,
+        .panel-kicker,
+        .insight-label,
+        .disclaimer,
+        .empty-state,
+        .control-note {
+            color: var(--muted);
+        }
+
+        .brand-copy span,
+        .topbar-note,
+        .badge,
+        .metric-label,
+        .insight-label,
+        .control-note {
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .hero-card,
+        .panel,
+        .insight-card,
+        .banner {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-xl);
+            background: var(--bg-elevated);
+            backdrop-filter: blur(18px);
+            box-shadow: var(--shadow);
+        }
+
+        .hero-card {
+            padding: 40px;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.22), transparent 30%),
+                radial-gradient(circle at 85% 30%, rgba(245, 158, 11, 0.12), transparent 24%),
+                linear-gradient(180deg, rgba(16, 28, 47, 0.94), rgba(10, 18, 31, 0.98));
+        }
+
+        .hero-card::after,
+        .panel::after,
+        .insight-card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: inherit;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .eyebrow {
+            margin-bottom: 14px;
+            font-weight: 600;
+        }
+
+        .hero-copy h1 {
+            margin: 0 0 16px;
+            font-size: clamp(42px, 7vw, 76px);
+            line-height: 0.96;
+            font-weight: 650;
+            max-width: 9ch;
+        }
+
+        .hero-copy p {
+            margin: 0;
+            max-width: 56ch;
+            font-size: 17px;
+            line-height: 1.6;
+        }
+
+        .hero-bottom {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .badge {
+            padding: 10px 14px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .hero-side {
+            padding: 28px;
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            gap: 18px;
+            background:
+                linear-gradient(180deg, rgba(22, 36, 58, 0.92), rgba(11, 18, 30, 0.94));
+        }
+
+        .signal-card {
+            display: grid;
+            gap: 12px;
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .signal-card strong {
+            font-size: 28px;
+            line-height: 1;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-strong);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .control-panel {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 320px;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .panel {
+            padding: 28px;
+            background: linear-gradient(180deg, var(--bg-panel), rgba(9, 17, 29, 0.96));
+        }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: end;
+            margin-bottom: 22px;
+        }
+
+        .panel h2 {
+            margin: 6px 0 0;
+            font-size: clamp(28px, 4vw, 40px);
+            line-height: 1.05;
+            font-weight: 620;
+        }
+
+        .panel-kicker {
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+
+        .field label {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .field input,
+        .field select,
+        .field button {
+            width: 100%;
+            min-height: 56px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            padding: 0 18px;
+            color: var(--text);
+            font: inherit;
+        }
+
+        .field input,
+        .field select {
+            appearance: none;
+            background: rgba(255, 255, 255, 0.04);
+            transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+        }
+
+        .field input:focus,
+        .field select:focus {
+            outline: none;
+            border-color: rgba(125, 211, 252, 0.8);
+            background: rgba(255, 255, 255, 0.06);
+            transform: translateY(-1px);
+        }
+
+        .field button {
+            align-self: end;
+            border: 0;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+            color: #04111c;
+            cursor: pointer;
+            box-shadow: 0 18px 40px rgba(56, 189, 248, 0.22);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+        }
+
+        .field button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 24px 46px rgba(56, 189, 248, 0.28);
+            filter: saturate(1.05);
+        }
+
+        .field button:disabled {
+            cursor: wait;
+            opacity: 0.7;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+
+        .metric-card {
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.03);
+            min-width: 0;
+        }
+
+        .metric-value {
+            margin-top: 8px;
+            font-size: clamp(24px, 1.8vw, 34px);
+            line-height: 1;
+            font-weight: 630;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .metric-change {
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--muted-strong);
+        }
+
+        .banner {
+            margin-bottom: 24px;
+            padding: 18px 22px;
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(18, 29, 46, 0.92), rgba(11, 18, 30, 0.96));
+        }
+
+        .banner strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+
+        .banner p,
+        .disclaimer {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);
+            gap: 24px;
+        }
+
+        .chart-panel {
+            min-height: 620px;
+        }
+
+        .chart-shell {
+            position: relative;
+            height: 480px;
+            margin-top: 16px;
+        }
+
+        .empty-state {
+            position: absolute;
+            inset: 0;
+            display: none;
+            place-items: center;
+            text-align: center;
+            padding: 24px;
+            border: 1px dashed var(--line-strong);
+            border-radius: var(--radius-lg);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .insights-panel {
+            display: grid;
+            gap: 16px;
+        }
+
+        .insight-card {
+            padding: 22px;
+            background: linear-gradient(180deg, var(--bg-panel-strong), rgba(9, 17, 29, 0.98));
+        }
+
+        .insight-value {
+            margin: 12px 0 8px;
+            font-size: 30px;
+            font-weight: 620;
+            line-height: 1;
+        }
+
+        .insight-body {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--muted-strong);
+        }
+
+        .insight-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 12px;
+        }
+
+        .insight-list li {
+            padding: 14px 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .insight-list li:first-child {
+            border-top: 0;
+            padding-top: 0;
+        }
+
+        .list-title {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .list-value {
+            display: block;
+            font-size: 17px;
+            font-weight: 560;
+        }
+
+        .footer-note {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .positive {
+            color: var(--green);
+        }
+
+        .negative {
+            color: var(--red);
+        }
+
+        @media (max-width: 1100px) {
+            .hero,
+            .control-panel,
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .control-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 720px) {
+            body {
+                background:
+                    radial-gradient(circle at top left, rgba(56, 189, 248, 0.2), transparent 34%),
+                    linear-gradient(180deg, #08111d 0%, #0a1626 42%, #07111f 100%);
+            }
+
+            .shell {
+                padding: 16px 14px 32px;
+            }
+
+            .topbar,
+            .banner,
+            .panel-head {
+                flex-direction: column;
+                align-items: start;
+            }
+
+            .hero-card,
+            .panel,
+            .insight-card,
+            .hero-side {
+                padding: 22px;
+            }
+
+            .control-grid,
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metric-value {
+                font-size: clamp(24px, 8vw, 38px);
+            }
+
+            .hero-copy h1 {
+                max-width: none;
+            }
+
+            .chart-panel {
+                min-height: 560px;
+            }
+
+            .chart-shell {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true"></div>
+                <div class="brand-copy">
+                    <strong>Option Visualiser</strong>
+                    <span>Structural chain intelligence</span>
+                </div>
+            </div>
+            <div class="topbar-note" id="topbarNote">Waiting for first analysis</div>
+        </header>
+
+        <section class="hero">
+            <div class="hero-card">
+                <div class="hero-copy">
+                    <div class="eyebrow">Options structure, not retail noise</div>
+                    <h1>Read positioning around spot.</h1>
+                    <p>
+                        Inspect gamma pressure, volume imbalance, implied volatility skew, and synthetic forward levels
+                        in a single surface tuned for fast directional context.
+                    </p>
+                </div>
+                <div class="hero-bottom">
+                    <div class="badge" id="heroTicker">Ticker: SPY</div>
+                    <div class="badge" id="heroExpiry">Expiry: Loading</div>
+                    <div class="badge" id="heroMetric">Mode: Gamma exposure</div>
+                </div>
+            </div>
+
+            <aside class="hero-side">
+                <div>
+                    <div class="panel-kicker">Market posture</div>
+                    <h2 style="margin: 8px 0 0; font-size: 34px; line-height: 1.05;">Cleaner hierarchy. Faster read.</h2>
+                </div>
+                <div class="signal-card">
+                    <div class="status-row">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <span id="statusText">Loading initial chain data...</span>
+                    </div>
+                    <strong id="spotValue">$--</strong>
+                    <div class="control-note" id="spotSubtext">Spot reference will appear after the first successful request.</div>
+                </div>
+                <div class="signal-card">
+                    <div class="panel-kicker">Why this design changed</div>
+                    <p class="insight-body" style="margin: 0;">
+                        The previous page looked like a rough Apple clone. This version uses the same discipline:
+                        large visual hierarchy, restrained controls, layered panels, and more legible data grouping.
+                    </p>
+                </div>
+            </aside>
+        </section>
+
+        <section class="control-panel">
+            <div class="panel">
+                <div class="panel-head">
+                    <div>
+                        <div class="panel-kicker">Command deck</div>
+                        <h2>Analyze a chain without the clutter.</h2>
+                    </div>
+                </div>
+
+                <div class="control-grid">
+                    <div class="field">
+                        <label for="tickerInput">Ticker</label>
+                        <input type="text" id="tickerInput" placeholder="SPY" value="SPY" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="field">
+                        <label for="metricSelect">Metric</label>
+                        <select id="metricSelect">
+                            <option value="gex" selected>Gamma Exposure</option>
+                            <option value="volume">Call vs Put Volume</option>
+                            <option value="iv">Implied Volatility Skew</option>
+                            <option value="synthetic">Synthetic Forward Curve</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="expirySelect">Expiration</label>
+                        <select id="expirySelect">
+                            <option value="">Loading dates...</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="analyzeButton">Run</label>
+                        <button id="analyzeButton" type="button">Analyze</button>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="panel">
+                <div class="panel-kicker">Snapshot</div>
+                <div class="summary-grid" id="macroStats">
+                    <div class="metric-card">
+                        <div class="metric-label">Net GEX</div>
+                        <div class="metric-value" id="valNetGex">$--</div>
+                        <div class="metric-change">Dealer gamma balance across shared strikes</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Call Wall</div>
+                        <div class="metric-value" id="valCallWall">$--</div>
+                        <div class="metric-change">Largest positive gamma concentration</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Put Wall</div>
+                        <div class="metric-value" id="valPutWall">$--</div>
+                        <div class="metric-change">Largest negative gamma concentration</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Zero Gamma</div>
+                        <div class="metric-value" id="valZeroGamma">$--</div>
+                        <div class="metric-change">Closest liquid strike to neutral dealer gamma</div>
+                    </div>
+                </div>
+            </aside>
+        </section>
+
+        <section class="banner">
+            <div>
+                <strong>Delayed data notice</strong>
+                <p>Yahoo Finance options data is typically delayed by 15 to 20 minutes. Treat this as structural context, not execution-grade feed data.</p>
+            </div>
+            <p class="disclaimer" id="chartContext">Waiting for live context.</p>
+        </section>
+
+        <section class="main-grid">
+            <div class="panel chart-panel">
+                <div class="panel-head">
+                    <div>
+                        <div class="panel-kicker">Visual surface</div>
+                        <h2 id="chartTitle">Gamma exposure around spot</h2>
+                    </div>
+                    <div class="control-note" id="dataWindow">Window: spot ±2.5%</div>
+                </div>
+
+                <div class="chart-shell">
+                    <canvas id="flowChart"></canvas>
+                    <div class="empty-state" id="emptyState">No strikes available in the current display window.</div>
+                </div>
+            </div>
+
+            <aside class="insights-panel">
+                <div class="insight-card">
+                    <div class="insight-label">Live takeaway</div>
+                    <div class="insight-value" id="insightHeadline">Awaiting data</div>
+                    <p class="insight-body" id="insightBody">
+                        Run an analysis to generate a quick structural read on the current chain.
+                    </p>
+                </div>
+
+                <div class="insight-card">
+                    <div class="insight-label">Current read</div>
+                    <ul class="insight-list">
+                        <li>
+                            <span class="list-title">Selected metric</span>
+                            <span class="list-value" id="selectedMetric">Gamma exposure</span>
+                        </li>
+                        <li>
+                            <span class="list-title">Displayed strikes</span>
+                            <span class="list-value" id="displayedStrikes">--</span>
+                        </li>
+                        <li>
+                            <span class="list-title">Peak call concentration</span>
+                            <span class="list-value" id="peakCall">--</span>
+                        </li>
+                        <li>
+                            <span class="list-title">Peak put concentration</span>
+                            <span class="list-value" id="peakPut">--</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="insight-card">
+                    <div class="insight-label">Interpretation guide</div>
+                    <p class="insight-body">
+                        Positive dealer gamma often dampens price movement. Negative dealer gamma can amplify movement.
+                        Volume, IV skew, and synthetic forward should be read as context around that core positioning map.
+                    </p>
+                </div>
+            </aside>
+        </section>
+
+        <div class="footer-note">Built for desktop and mobile review. Best used with a running local Python backend.</div>
+    </div>
+
+    <script>
+        Chart.defaults.font.family = '"SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        Chart.defaults.color = '#9fb0c8';
+
+        let chartInstance = null;
+        let chainData = [];
+        let currentSpot = 0;
+        let currentTicker = 'SPY';
+        let currentExpiration = '';
+        let currentMetric = 'gex';
+        let isLoading = false;
+
+        const metricMeta = {
+            gex: {
+                label: 'Gamma exposure',
+                title: 'Gamma exposure around spot',
+                windowLabel: 'Window: adaptive strike range',
+                summary: 'Focuses on dealer positioning concentration across a broader, stock-aware strike range.'
+            },
+            volume: {
+                label: 'Call vs put volume',
+                title: 'Volume imbalance around spot',
+                windowLabel: 'Window: adaptive strike range',
+                summary: 'Highlights where recent contract flow is clustering across a broader active strike range.'
+            },
+            iv: {
+                label: 'Implied volatility skew',
+                title: 'Implied volatility profile',
+                windowLabel: 'Window: adaptive strike range',
+                summary: 'Shows how average implied volatility behaves across a broader strike window around spot.'
+            },
+            synthetic: {
+                label: 'Synthetic forward curve',
+                title: 'Synthetic forward versus spot',
+                windowLabel: 'Window: adaptive strike range',
+                summary: 'Compares put-call parity implied forward prices with the current spot anchor across more price levels.'
+            }
+        };
+
+        const statusText = document.getElementById('statusText');
+        const topbarNote = document.getElementById('topbarNote');
+        const spotValue = document.getElementById('spotValue');
+        const spotSubtext = document.getElementById('spotSubtext');
+        const analyzeButton = document.getElementById('analyzeButton');
+        const expirySelect = document.getElementById('expirySelect');
+        const metricSelect = document.getElementById('metricSelect');
+        const tickerInput = document.getElementById('tickerInput');
+        const emptyState = document.getElementById('emptyState');
+
+        const spotLinePlugin = {
+            id: 'spotLine',
+            afterDraw: (chart) => {
+                if (!currentSpot || !chart.data.labels.length) return;
+                if (!['volume', 'gex'].includes(currentMetric)) return;
+
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                const labels = chart.data.labels.map(Number);
+                const spot = Number(currentSpot);
+                let xPixel = null;
+
+                if (spot <= labels[0]) {
+                    xPixel = xAxis.getPixelForTick(0);
+                } else if (spot >= labels[labels.length - 1]) {
+                    xPixel = xAxis.getPixelForTick(labels.length - 1);
+                } else {
+                    for (let i = 0; i < labels.length - 1; i += 1) {
+                        if (spot >= labels[i] && spot <= labels[i + 1]) {
+                            const ratio = (spot - labels[i]) / (labels[i + 1] - labels[i]);
+                            const px1 = xAxis.getPixelForTick(i);
+                            const px2 = xAxis.getPixelForTick(i + 1);
+                            xPixel = px1 + ((px2 - px1) * ratio);
+                            break;
+                        }
+                    }
+                }
+
+                if (xPixel === null) return;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(xPixel, yAxis.top);
+                ctx.lineTo(xPixel, yAxis.bottom);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#7dd3fc';
+                ctx.setLineDash([4, 6]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                const label = `Spot ${spot.toFixed(2)}`;
+                ctx.font = '600 12px "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif';
+                const textWidth = ctx.measureText(label).width;
+                const pillWidth = textWidth + 20;
+                const pillX = xPixel - (pillWidth / 2);
+                const pillY = yAxis.top - 28;
+
+                ctx.fillStyle = 'rgba(10, 20, 34, 0.92)';
+                ctx.strokeStyle = 'rgba(125, 211, 252, 0.45)';
+                ctx.beginPath();
+                ctx.roundRect(pillX, pillY, pillWidth, 22, 11);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#d8f3ff';
+                ctx.textAlign = 'center';
+                ctx.fillText(label, xPixel, pillY + 15);
+                ctx.restore();
+            }
+        };
+
+        function formatCurrency(value, digits = 2) {
+            if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
+            return `$${Number(value).toFixed(digits)}`;
+        }
+
+        function formatCompactMillions(value) {
+            if (value === null || value === undefined || Number.isNaN(Number(value))) return '$--';
+            const amount = Number(value);
+            return `${amount >= 0 ? '$' : '-$'}${Math.abs(amount).toFixed(2)}M`;
+        }
+
+        function setLoadingState(loading) {
+            isLoading = loading;
+            analyzeButton.disabled = loading;
+            analyzeButton.textContent = loading ? 'Analyzing...' : 'Analyze';
+        }
+
+        function getDisplayRange(data, spot, metric) {
+            if (!data.length || !spot) {
+                return {
+                    lowerBound: 0,
+                    upperBound: 0,
+                    filteredData: []
+                };
+            }
+
+            const basePct = metric === 'gex' ? 0.12 : 0.15;
+            const minStrikeCount = metric === 'gex' ? 31 : 25;
+            const maxPct = metric === 'gex' ? 0.22 : 0.28;
+
+            let rangePct = basePct;
+            let filteredData = [];
+
+            while (rangePct <= maxPct) {
+                const lowerBound = spot * (1 - rangePct);
+                const upperBound = spot * (1 + rangePct);
+                filteredData = data.filter((row) => row.strike >= lowerBound && row.strike <= upperBound);
+
+                if (filteredData.length >= minStrikeCount || rangePct === maxPct) {
+                    return { lowerBound, upperBound, filteredData, rangePct };
+                }
+
+                rangePct = Math.min(rangePct + 0.03, maxPct);
+            }
+
+            const lowerBound = spot * (1 - maxPct);
+            const upperBound = spot * (1 + maxPct);
+            filteredData = data.filter((row) => row.strike >= lowerBound && row.strike <= upperBound);
+            return { lowerBound, upperBound, filteredData, rangePct: maxPct };
+        }
+
+        function updateMetricMeta() {
+            currentMetric = metricSelect.value;
+            const meta = metricMeta[currentMetric];
+            document.getElementById('heroMetric').textContent = `Mode: ${meta.label}`;
+            document.getElementById('selectedMetric').textContent = meta.label;
+            document.getElementById('chartTitle').textContent = meta.title;
+            document.getElementById('dataWindow').textContent = meta.windowLabel;
+        }
+
+        function updateSummary(result) {
+            document.getElementById('valNetGex').textContent = formatCompactMillions(result.net_gex);
+            document.getElementById('valCallWall').textContent = formatCurrency(result.call_wall, 0);
+            document.getElementById('valPutWall').textContent = formatCurrency(result.put_wall, 0);
+            document.getElementById('valZeroGamma').textContent = formatCurrency(result.zero_gamma, 0);
+
+            document.getElementById('heroTicker').textContent = `Ticker: ${result.ticker}`;
+            document.getElementById('heroExpiry').textContent = `Expiry: ${result.expiration}`;
+            document.getElementById('chartContext').textContent = `${metricMeta[currentMetric].summary} Spot ${formatCurrency(result.spot)} with ${result.data.length} shared strikes returned.`;
+
+            spotValue.textContent = formatCurrency(result.spot);
+            spotSubtext.textContent = `${result.ticker} spot reference for ${result.expiration}`;
+            topbarNote.textContent = `${result.ticker} • ${result.expiration}`;
+        }
+
+        function updateInsights(filteredData, result) {
+            const netGex = Number(result.net_gex || 0);
+            const tone = netGex >= 0 ? 'Positive gamma regime' : 'Negative gamma regime';
+            const sentence = netGex >= 0
+                ? 'Positioning suggests more dampened movement if spot stays inside the current high-liquidity band.'
+                : 'Positioning suggests movement can become less stable if price starts pushing through concentrated strikes.';
+
+            document.getElementById('insightHeadline').textContent = tone;
+            document.getElementById('insightBody').textContent = sentence;
+            document.getElementById('insightHeadline').className = `insight-value ${netGex >= 0 ? 'positive' : 'negative'}`;
+            document.getElementById('displayedStrikes').textContent = filteredData.length ? `${filteredData.length} strikes` : '0 strikes';
+
+            const peakCall = [...filteredData].sort((a, b) => b.call_gex - a.call_gex)[0];
+            const peakPut = [...filteredData].sort((a, b) => a.put_gex - b.put_gex)[0];
+
+            document.getElementById('peakCall').textContent = peakCall
+                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.call_gex)}`
+                : '--';
+            document.getElementById('peakPut').textContent = peakPut
+                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.put_gex)}`
+                : '--';
+        }
+
+        async function fetchData(isNewTicker = false) {
+            const ticker = tickerInput.value.trim().toUpperCase() || 'SPY';
+            tickerInput.value = ticker;
+            currentTicker = ticker;
+
+            let url = `https://optionvisualiser.onrender.com/api/flow?ticker=${encodeURIComponent(ticker)}`;
+            if (!isNewTicker && expirySelect.value) {
+                url += `&expiration=${encodeURIComponent(expirySelect.value)}`;
+            }
+
+            setLoadingState(true);
+            statusText.textContent = `Loading ${ticker} option chain...`;
+
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (!response.ok || result.error) {
+                    throw new Error(result.error || `Request failed with status ${response.status}`);
+                }
+
+                chainData = result.data || [];
+                currentSpot = Number(result.spot || 0);
+                currentExpiration = result.expiration || '';
+
+                statusText.textContent = `Loaded ${result.ticker} at ${formatCurrency(result.spot)} for ${result.expiration}`;
+                updateSummary(result);
+
+                if (isNewTicker) {
+                    expirySelect.innerHTML = '';
+                    result.available_expirations.forEach((expiration) => {
+                        const option = document.createElement('option');
+                        option.value = expiration;
+                        option.textContent = expiration;
+                        if (expiration === result.expiration) option.selected = true;
+                        expirySelect.appendChild(option);
+                    });
+                }
+
+                renderChart(result);
+            } catch (error) {
+                chainData = [];
+                currentSpot = 0;
+                currentExpiration = '';
+                statusText.textContent = `Error: ${error.message}`;
+                topbarNote.textContent = 'Request failed';
+                spotValue.textContent = '$--';
+                spotSubtext.textContent = 'Check that the Flask backend is running and the ticker is valid.';
+                emptyState.style.display = 'grid';
+                if (chartInstance) {
+                    chartInstance.destroy();
+                    chartInstance = null;
+                }
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        function renderChart(result) {
+            const ctx = document.getElementById('flowChart').getContext('2d');
+            const { filteredData, rangePct } = getDisplayRange(chainData, currentSpot, currentMetric);
+            const strikes = filteredData.map((row) => row.strike);
+            emptyState.style.display = filteredData.length ? 'none' : 'grid';
+            document.getElementById('dataWindow').textContent = `Window: spot ±${(rangePct * 100).toFixed(0)}%`;
+
+            let datasets = [];
+            let scales = {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#9fb0c8' }
+                },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.08)' },
+                    ticks: { color: '#9fb0c8' }
+                }
+            };
+
+            if (currentMetric === 'volume') {
+                datasets = [
+                    {
+                        label: 'Call volume',
+                        data: filteredData.map((row) => row.call_vol),
+                        backgroundColor: 'rgba(52, 211, 153, 0.82)',
+                        borderRadius: 6
+                    },
+                    {
+                        label: 'Put volume',
+                        data: filteredData.map((row) => row.put_vol),
+                        backgroundColor: 'rgba(251, 113, 133, 0.82)',
+                        borderRadius: 6
+                    }
+                ];
+            } else if (currentMetric === 'gex') {
+                const callSeries = filteredData.map((row) => row.call_gex);
+                const putSeries = filteredData.map((row) => row.put_gex);
+                const maxCall = callSeries.length ? Math.max(...callSeries) : 0;
+                const minPut = putSeries.length ? Math.min(...putSeries) : 0;
+
+                datasets = [
+                    {
+                        type: 'bar',
+                        label: 'Call GEX',
+                        data: callSeries,
+                        backgroundColor: 'rgba(52, 211, 153, 0.82)',
+                        borderColor: (context) => context.raw === maxCall ? '#d1fae5' : 'transparent',
+                        borderWidth: (context) => context.raw === maxCall ? 2 : 0,
+                        borderRadius: 6,
+                        barPercentage: 0.94,
+                        categoryPercentage: 0.86
+                    },
+                    {
+                        type: 'bar',
+                        label: 'Put GEX',
+                        data: putSeries,
+                        backgroundColor: 'rgba(251, 113, 133, 0.82)',
+                        borderColor: (context) => context.raw === minPut ? '#ffe4e6' : 'transparent',
+                        borderWidth: (context) => context.raw === minPut ? 2 : 0,
+                        borderRadius: 6,
+                        barPercentage: 0.94,
+                        categoryPercentage: 0.86
+                    }
+                ];
+                scales = {
+                    x: {
+                        stacked: true,
+                        grid: { display: false },
+                        ticks: { color: '#9fb0c8' }
+                    },
+                    y: {
+                        stacked: true,
+                        grid: { color: 'rgba(255,255,255,0.08)' },
+                        ticks: { color: '#9fb0c8' }
+                    }
+                };
+            } else if (currentMetric === 'iv') {
+                datasets = [
+                    {
+                        type: 'line',
+                        label: 'Average IV',
+                        data: filteredData.map((row) => row.implied_vol),
+                        borderColor: '#7dd3fc',
+                        backgroundColor: 'rgba(125, 211, 252, 0.16)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 2,
+                        pointHoverRadius: 4
+                    }
+                ];
+            } else if (currentMetric === 'synthetic') {
+                datasets = [
+                    {
+                        type: 'line',
+                        label: 'Synthetic forward',
+                        data: filteredData.map((row) => row.implied_forward),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                        fill: false,
+                        tension: 0.28,
+                        pointRadius: 2
+                    },
+                    {
+                        type: 'line',
+                        label: 'Spot price',
+                        data: Array(strikes.length).fill(currentSpot),
+                        borderColor: 'rgba(244, 247, 251, 0.42)',
+                        borderDash: [6, 6],
+                        pointRadius: 0
+                    }
+                ];
+            }
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: strikes, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 650,
+                        easing: 'easeOutQuart'
+                    },
+                    layout: {
+                        padding: { top: 28 }
+                    },
+                    scales,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#f4f7fb',
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                boxWidth: 8,
+                                padding: 18
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(9, 17, 29, 0.96)',
+                            titleColor: '#f4f7fb',
+                            bodyColor: '#d6e2f0',
+                            borderColor: 'rgba(255, 255, 255, 0.12)',
+                            borderWidth: 1,
+                            padding: 14,
+                            displayColors: true,
+                            cornerRadius: 14
+                        }
+                    }
+                },
+                plugins: [spotLinePlugin]
+            });
+
+            updateInsights(filteredData, result);
+        }
+
+        analyzeButton.addEventListener('click', () => fetchData(true));
+
+        metricSelect.addEventListener('change', () => {
+            updateMetricMeta();
+            if (chainData.length > 0) {
+                renderChart({
+                    ticker: currentTicker,
+                    spot: currentSpot,
+                    expiration: currentExpiration,
+                    net_gex: document.getElementById('valNetGex').textContent,
+                    data: chainData
+                });
+            }
+        });
+
+        expirySelect.addEventListener('change', () => {
+            fetchData(false);
+        });
+
+        tickerInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                fetchData(true);
+            }
+        });
+
+        updateMetricMeta();
+        window.addEventListener('load', () => fetchData(true));
+    </script>
+</body>
+</html>
