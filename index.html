@@ -976,7 +976,7 @@
             tickerInput.value = ticker;
             currentTicker = ticker;
 
-            let url = `https://optionvisualiser.onrender.com/api/flow?ticker=${encodeURIComponent(ticker)}`;
+            let url = `https://optionvisualiser.onrender.com/api/flow?ticker=${encodeURIComponent(ticker)}&_ts=${Date.now()}`;
             if (!isNewTicker && expirySelect.value) {
                 url += `&expiration=${encodeURIComponent(expirySelect.value)}`;
             }
@@ -985,7 +985,13 @@
             statusText.textContent = `Loading ${ticker} option chain...`;
 
             try {
-                const response = await fetch(url);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 12000);
+                const response = await fetch(url, {
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
                 const result = await response.json();
 
                 if (!response.ok || result.error) {
@@ -1015,7 +1021,7 @@
                 chainData = [];
                 currentSpot = 0;
                 currentExpiration = '';
-                statusText.textContent = `Error: ${error.message}`;
+                statusText.textContent = `Error: ${error.name === 'AbortError' ? 'Request timed out after 12 seconds.' : error.message}`;
                 topbarNote.textContent = 'Request failed';
                 spotValue.textContent = '$--';
                 spotSubtext.textContent = 'Check that the Flask backend is running and the ticker is valid.';
@@ -1235,3 +1241,4 @@
     </script>
 </body>
 </html>
+
