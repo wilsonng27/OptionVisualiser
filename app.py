@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 import requests
-import yfinance as yf
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from scipy.stats import norm
@@ -32,20 +31,6 @@ def safe_number(value, default=0.0):
     except TypeError:
         pass
     return float(value)
-
-
-def get_current_price(ticker):
-    fast_info = getattr(ticker, "fast_info", {}) or {}
-    for key in ("lastPrice", "regularMarketPrice", "previousClose"):
-        value = fast_info.get(key)
-        if value:
-            return float(value)
-
-    history = ticker.history(period="1d", interval="1m")
-    if not history.empty:
-        return float(history["Close"].dropna().iloc[-1])
-
-    raise ValueError("Unable to determine current price.")
 
 
 def fetch_chain_from_yahoo_endpoint(ticker_symbol, requested_expiration=None):
@@ -252,23 +237,10 @@ def get_flow():
                 requested_exp,
             )
         except Exception:
-            try:
-                current_price, expirations, exp_date, calls, puts = fetch_chain_from_yahoo_endpoint(
-                    ticker_symbol,
-                    requested_exp,
-                )
-            except Exception:
-                ticker = yf.Ticker(ticker_symbol, session=session)
-                current_price = get_current_price(ticker)
-                expirations = list(ticker.options)
-
-                if not expirations:
-                    return jsonify({"error": "No options found."})
-
-                exp_date = requested_exp if requested_exp in expirations else expirations[0]
-                chain = ticker.option_chain(exp_date)
-                calls = chain.calls
-                puts = chain.puts
+            current_price, expirations, exp_date, calls, puts = fetch_chain_from_yahoo_endpoint(
+                ticker_symbol,
+                requested_exp,
+            )
 
         expiry_dt = datetime.strptime(exp_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
         now_utc = datetime.now(timezone.utc)
@@ -277,11 +249,24 @@ def get_flow():
         r = 0.05
 
         data = []
-        common_strikes = set(calls['strike']).intersection(set(puts['strike']))
 
-        for strike in sorted(common_strikes):
-            call = calls[calls['strike'] == strike].iloc[0]
-            put = puts[puts['strike'] == strike].iloc[0]
+        # Avoid repeated DataFrame filtering inside the loop; it becomes very slow
+        # on large chains and can make the API appear hung in the browser.
+        call_map = {
+            float(row["strike"]): row
+            for row in calls.to_dict("records")
+            if row.get("strike") is not None
+        }
+        put_map = {
+            float(row["strike"]): row
+            for row in puts.to_dict("records")
+            if row.get("strike") is not None
+        }
+        common_strikes = sorted(set(call_map.keys()).intersection(set(put_map.keys())))
+
+        for strike in common_strikes:
+            call = call_map[strike]
+            put = put_map[strike]
 
             c_iv = safe_number(call.get('impliedVolatility'))
             p_iv = safe_number(put.get('impliedVolatility'))
@@ -364,6 +349,7 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
+
 
 
 
