@@ -766,9 +766,9 @@
         const metricMeta = {
             gex: {
                 label: 'Gamma exposure',
-                title: 'Net gamma exposure by strike',
+                title: 'Gamma exposure around spot',
                 windowLabel: 'Window: adaptive strike range',
-                summary: 'Shows net dealer gamma by strike, filtered toward strikes with actual liquidity.'
+                summary: 'Shows call and put gamma exposure across strikes using the original project convention.'
             },
             volume: {
                 label: 'Call vs put volume',
@@ -871,6 +871,13 @@
                 };
             }
 
+            if (metric === 'gex') {
+                const lowerBound = spot * 0.975;
+                const upperBound = spot * 1.025;
+                const filteredData = data.filter((row) => row.strike >= lowerBound && row.strike <= upperBound);
+                return { lowerBound, upperBound, filteredData, rangePct: 0.025 };
+            }
+
             const basePct = metric === 'gex' ? 0.12 : 0.15;
             const minStrikeCount = metric === 'gex' ? 31 : 25;
             const maxPct = metric === 'gex' ? 0.22 : 0.28;
@@ -953,14 +960,14 @@
             document.getElementById('insightHeadline').className = `insight-value ${netGex >= 0 ? 'positive' : 'negative'}`;
             document.getElementById('displayedStrikes').textContent = filteredData.length ? `${filteredData.length} strikes` : '0 strikes';
 
-            const peakCall = result.peak_call;
-            const peakPut = result.peak_put;
+            const peakCall = result.call_wall_details;
+            const peakPut = result.put_wall_details;
 
             document.getElementById('peakCall').textContent = peakCall
-                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.gex)} • OI ${Number(peakCall.total_oi || 0).toLocaleString()}`
+                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.gex)} • OI ${Number(peakCall.call_oi || 0).toLocaleString()}`
                 : '--';
             document.getElementById('peakPut').textContent = peakPut
-                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.gex)} • OI ${Number(peakPut.total_oi || 0).toLocaleString()}`
+                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.gex)} • OI ${Number(peakPut.put_oi || 0).toLocaleString()}`
                 : '--';
         }
 
@@ -1028,6 +1035,7 @@
             emptyState.style.display = filteredData.length ? 'none' : 'grid';
             document.getElementById('dataWindow').textContent = `Window: spot ±${(rangePct * 100).toFixed(0)}%`;
 
+            const strikes = filteredData.map((row) => Number(row.strike));
             const xValues = filteredData.map((row) => Number(row.strike));
             const minStrike = xValues.length ? Math.min(...xValues) : 0;
             const maxStrike = xValues.length ? Math.max(...xValues) : 0;
@@ -1066,43 +1074,45 @@
                     }
                 ];
             } else if (currentMetric === 'gex') {
-                const totalSeries = filteredData.map((row) => row.total_gex);
-                const maxPositive = totalSeries.length ? Math.max(...totalSeries) : 0;
-                const maxNegative = totalSeries.length ? Math.min(...totalSeries) : 0;
+                const callSeries = filteredData.map((row) => row.call_gex);
+                const putSeries = filteredData.map((row) => row.put_gex);
+                const maxCall = callSeries.length ? Math.max(...callSeries) : 0;
+                const minPut = putSeries.length ? Math.min(...putSeries) : 0;
 
                 datasets = [
                     {
                         type: 'bar',
-                        label: 'Net GEX',
-                        data: filteredData.map((row) => ({ x: row.strike, y: row.total_gex })),
-                        backgroundColor: (context) => context.raw.y >= 0
-                            ? 'rgba(52, 211, 153, 0.82)'
-                            : 'rgba(251, 113, 133, 0.82)',
-                        borderColor: (context) => {
-                            if (context.raw.y === maxPositive) return '#d1fae5';
-                            if (context.raw.y === maxNegative) return '#ffe4e6';
-                            return 'transparent';
-                        },
-                        borderWidth: (context) => (
-                            context.raw.y === maxPositive || context.raw.y === maxNegative ? 2 : 0
-                        ),
-                        borderRadius: 6,
-                        barPercentage: 0.94,
+                        label: 'Call GEX',
+                        data: callSeries,
+                        backgroundColor: 'rgba(52, 211, 153, 0.82)',
+                        borderColor: (context) => context.raw === maxCall ? '#d1fae5' : 'transparent',
+                        borderWidth: (context) => (context.raw === maxCall ? 2 : 0),
+                        borderRadius: 2,
+                        barPercentage: 1.0,
+                        categoryPercentage: 0.86
+                    },
+                    {
+                        type: 'bar',
+                        label: 'Put GEX',
+                        data: putSeries,
+                        backgroundColor: 'rgba(251, 113, 133, 0.82)',
+                        borderColor: (context) => context.raw === minPut ? '#ffe4e6' : 'transparent',
+                        borderWidth: (context) => (context.raw === minPut ? 2 : 0),
+                        borderRadius: 2,
+                        barPercentage: 1.0,
                         categoryPercentage: 0.86
                     }
                 ];
                 scales = {
                     x: {
-                        type: 'linear',
-                        min: minStrike,
-                        max: maxStrike,
+                        stacked: true,
                         grid: { display: false },
                         ticks: {
-                            color: '#9fb0c8',
-                            callback: (value) => formatCurrency(value, 0)
+                            color: '#9fb0c8'
                         }
                     },
                     y: {
+                        stacked: true,
                         grid: { color: 'rgba(255,255,255,0.08)' },
                         ticks: { color: '#9fb0c8' }
                     }
@@ -1150,7 +1160,7 @@
 
             chartInstance = new Chart(ctx, {
                 type: 'bar',
-                data: { datasets },
+                data: currentMetric === 'gex' ? { labels: strikes, datasets } : { datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -1166,7 +1176,7 @@
                         mode: 'index',
                         intersect: false
                     },
-                    parsing: false,
+                    parsing: currentMetric !== 'gex',
                     plugins: {
                         legend: {
                             labels: {
