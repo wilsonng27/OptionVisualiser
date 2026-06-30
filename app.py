@@ -230,6 +230,11 @@ def calculate_greeks(S, K, T, r, sigma, option_type):
 
     return delta, gamma, theta, vega
 
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"ok": True})
+
 @app.route('/api/flow', methods=['GET'])
 def get_flow():
     ticker_symbol = request.args.get('ticker', 'SPY').upper()
@@ -354,5 +359,6 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
+
 
 
