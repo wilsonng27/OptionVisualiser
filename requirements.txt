@@ -4,3 +4,4 @@ yfinance
 numpy
 scipy
 gunicorn
+yfinance==0.2.38
