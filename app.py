@@ -104,21 +104,21 @@ def get_flow():
             c_volume = int(safe_number(call.get('volume'), 0))
             p_volume = int(safe_number(put.get('volume'), 0))
 
-            c_delta, gamma, c_theta, vega = calculate_greeks(current_price, strike, T, r, c_iv, 'call')
-            p_delta, _, p_theta, _ = calculate_greeks(current_price, strike, T, r, p_iv, 'put')
+            c_delta, c_gamma, c_theta, vega = calculate_greeks(current_price, strike, T, r, c_iv, 'call')
+            p_delta, p_gamma, p_theta, _ = calculate_greeks(current_price, strike, T, r, p_iv, 'put')
 
             implied_forward = strike + (c_last - p_last) * np.exp(r * T)
 
             # Express GEX as dollar gamma for a 1% underlying move, scaled to millions.
-            c_gex_val = float((gamma * c_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
-            p_gex_val = float((-gamma * p_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
+            c_gex_val = float((c_gamma * c_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
+            p_gex_val = float((-p_gamma * p_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
             total_gex_val = float(c_gex_val + p_gex_val)
 
             data.append({
                 "strike": float(strike),
                 "call_vol": c_volume,
                 "put_vol": p_volume,
-                "gamma": float(round(gamma, 4)),
+                "gamma": float(round((c_gamma + p_gamma) / 2, 4)),
                 "call_gex": float(round(c_gex_val, 2)),
                 "put_gex": float(round(p_gex_val, 2)),
                 "total_gex": float(round(total_gex_val, 2)),
@@ -128,20 +128,23 @@ def get_flow():
             })
 
         net_gex = sum(d['total_gex'] for d in data)
-        call_wall = max(data, key=lambda x: x['call_gex'])['strike'] if data else 0
-        put_wall = min(data, key=lambda x: x['put_gex'])['strike'] if data else 0
-
-        valid_strikes = [d for d in data if (0.90 * current_price) <= d['strike'] <= (1.10 * current_price)]
+        valid_strikes = [d for d in data if (0.88 * current_price) <= d['strike'] <= (1.12 * current_price)]
 
         if valid_strikes:
             avg_gross_gex = sum(d['abs_gross_gex'] for d in valid_strikes) / len(valid_strikes)
             institutional_strikes = [d for d in valid_strikes if d['abs_gross_gex'] > (avg_gross_gex * 0.5)]
+
+            reference_strikes = institutional_strikes if institutional_strikes else valid_strikes
+            call_wall = max(reference_strikes, key=lambda x: x['call_gex'])['strike']
+            put_wall = min(reference_strikes, key=lambda x: x['put_gex'])['strike']
 
             if institutional_strikes:
                 zero_gamma = min(institutional_strikes, key=lambda x: abs(x['total_gex']))['strike']
             else:
                 zero_gamma = min(valid_strikes, key=lambda x: abs(x['total_gex']))['strike']
         else:
+            call_wall = max(data, key=lambda x: x['call_gex'])['strike'] if data else 0
+            put_wall = min(data, key=lambda x: x['put_gex'])['strike'] if data else 0
             zero_gamma = 0
 
         return jsonify({
@@ -161,5 +164,6 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
+
 
 
