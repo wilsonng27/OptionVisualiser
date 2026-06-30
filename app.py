@@ -44,6 +44,30 @@ def get_current_price(ticker):
 
     raise ValueError("Unable to determine current price.")
 
+
+def build_liquidity_filtered_reference(data, spot):
+    if not data or not spot:
+        return []
+
+    near_spot = [row for row in data if (0.88 * spot) <= row["strike"] <= (1.12 * spot)]
+    if not near_spot:
+        return []
+
+    avg_gross_gex = sum(row["abs_gross_gex"] for row in near_spot) / len(near_spot)
+    avg_total_oi = sum(row["total_oi"] for row in near_spot) / len(near_spot)
+    avg_total_volume = sum(row["total_volume"] for row in near_spot) / len(near_spot)
+
+    filtered = [
+        row for row in near_spot
+        if row["abs_gross_gex"] >= (avg_gross_gex * 0.35)
+        and (
+            row["total_oi"] >= max(100, avg_total_oi * 0.3)
+            or row["total_volume"] >= max(10, avg_total_volume * 0.3)
+        )
+    ]
+
+    return filtered if filtered else near_spot
+
 def calculate_greeks(S, K, T, r, sigma, option_type):
     if T <= 0 or sigma <= 0:
         return 0, 0, 0, 0
@@ -118,6 +142,10 @@ def get_flow():
                 "strike": float(strike),
                 "call_vol": c_volume,
                 "put_vol": p_volume,
+                "call_oi": c_oi,
+                "put_oi": p_oi,
+                "total_oi": c_oi + p_oi,
+                "total_volume": c_volume + p_volume,
                 "gamma": float(round((c_gamma + p_gamma) / 2, 4)),
                 "call_gex": float(round(c_gex_val, 2)),
                 "put_gex": float(round(p_gex_val, 2)),
@@ -128,20 +156,12 @@ def get_flow():
             })
 
         net_gex = sum(d['total_gex'] for d in data)
-        valid_strikes = [d for d in data if (0.88 * current_price) <= d['strike'] <= (1.12 * current_price)]
+        reference_strikes = build_liquidity_filtered_reference(data, current_price)
 
-        if valid_strikes:
-            avg_gross_gex = sum(d['abs_gross_gex'] for d in valid_strikes) / len(valid_strikes)
-            institutional_strikes = [d for d in valid_strikes if d['abs_gross_gex'] > (avg_gross_gex * 0.5)]
-
-            reference_strikes = institutional_strikes if institutional_strikes else valid_strikes
+        if reference_strikes:
             call_wall = max(reference_strikes, key=lambda x: x['call_gex'])['strike']
             put_wall = min(reference_strikes, key=lambda x: x['put_gex'])['strike']
-
-            if institutional_strikes:
-                zero_gamma = min(institutional_strikes, key=lambda x: abs(x['total_gex']))['strike']
-            else:
-                zero_gamma = min(valid_strikes, key=lambda x: abs(x['total_gex']))['strike']
+            zero_gamma = min(reference_strikes, key=lambda x: abs(x['total_gex']))['strike']
         else:
             call_wall = max(data, key=lambda x: x['call_gex'])['strike'] if data else 0
             put_wall = min(data, key=lambda x: x['put_gex'])['strike'] if data else 0
@@ -164,6 +184,5 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
-
 
 
