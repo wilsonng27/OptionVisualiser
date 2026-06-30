@@ -109,8 +109,9 @@ def get_flow():
 
             implied_forward = strike + (c_last - p_last) * np.exp(r * T)
 
-            c_gex_val = float((gamma * c_oi * 100 * current_price) / 1_000_000)
-            p_gex_val = float((-gamma * p_oi * 100 * current_price) / 1_000_000)
+            # Express GEX as dollar gamma for a 1% underlying move, scaled to millions.
+            c_gex_val = float((gamma * c_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
+            p_gex_val = float((-gamma * p_oi * 100 * (current_price ** 2) * 0.01) / 1_000_000)
             total_gex_val = float(c_gex_val + p_gex_val)
 
             data.append({
