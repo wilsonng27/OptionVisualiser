@@ -766,9 +766,9 @@
         const metricMeta = {
             gex: {
                 label: 'Gamma exposure',
-                title: 'Gamma exposure around spot',
+                title: 'Net gamma exposure by strike',
                 windowLabel: 'Window: adaptive strike range',
-                summary: 'Focuses on dealer positioning concentration across a broader, stock-aware strike range.'
+                summary: 'Shows net dealer gamma by strike, filtered toward strikes with actual liquidity.'
             },
             volume: {
                 label: 'Call vs put volume',
@@ -1066,30 +1066,26 @@
                     }
                 ];
             } else if (currentMetric === 'gex') {
-                const callSeries = filteredData.map((row) => row.call_gex);
-                const putSeries = filteredData.map((row) => row.put_gex);
-                const maxCall = callSeries.length ? Math.max(...callSeries) : 0;
-                const minPut = putSeries.length ? Math.min(...putSeries) : 0;
+                const totalSeries = filteredData.map((row) => row.total_gex);
+                const maxPositive = totalSeries.length ? Math.max(...totalSeries) : 0;
+                const maxNegative = totalSeries.length ? Math.min(...totalSeries) : 0;
 
                 datasets = [
                     {
                         type: 'bar',
-                        label: 'Call GEX',
-                        data: filteredData.map((row) => ({ x: row.strike, y: row.call_gex })),
-                        backgroundColor: 'rgba(52, 211, 153, 0.82)',
-                        borderColor: (context) => context.raw.y === maxCall ? '#d1fae5' : 'transparent',
-                        borderWidth: (context) => context.raw.y === maxCall ? 2 : 0,
-                        borderRadius: 6,
-                        barPercentage: 0.94,
-                        categoryPercentage: 0.86
-                    },
-                    {
-                        type: 'bar',
-                        label: 'Put GEX',
-                        data: filteredData.map((row) => ({ x: row.strike, y: row.put_gex })),
-                        backgroundColor: 'rgba(251, 113, 133, 0.82)',
-                        borderColor: (context) => context.raw.y === minPut ? '#ffe4e6' : 'transparent',
-                        borderWidth: (context) => context.raw.y === minPut ? 2 : 0,
+                        label: 'Net GEX',
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.total_gex })),
+                        backgroundColor: (context) => context.raw.y >= 0
+                            ? 'rgba(52, 211, 153, 0.82)'
+                            : 'rgba(251, 113, 133, 0.82)',
+                        borderColor: (context) => {
+                            if (context.raw.y === maxPositive) return '#d1fae5';
+                            if (context.raw.y === maxNegative) return '#ffe4e6';
+                            return 'transparent';
+                        },
+                        borderWidth: (context) => (
+                            context.raw.y === maxPositive || context.raw.y === maxNegative ? 2 : 0
+                        ),
                         borderRadius: 6,
                         barPercentage: 0.94,
                         categoryPercentage: 0.86
@@ -1100,7 +1096,6 @@
                         type: 'linear',
                         min: minStrike,
                         max: maxStrike,
-                        stacked: true,
                         grid: { display: false },
                         ticks: {
                             color: '#9fb0c8',
@@ -1108,7 +1103,6 @@
                         }
                     },
                     y: {
-                        stacked: true,
                         grid: { color: 'rgba(255,255,255,0.08)' },
                         ticks: { color: '#9fb0c8' }
                     }
