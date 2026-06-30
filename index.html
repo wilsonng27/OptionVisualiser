@@ -976,7 +976,7 @@
             tickerInput.value = ticker;
             currentTicker = ticker;
 
-            let url = `https://optionvisualiser.onrender.com/api/flow?ticker=${encodeURIComponent(ticker)}&_ts=${Date.now()}`;
+            let url = `/api/flow?ticker=${encodeURIComponent(ticker)}&_ts=${Date.now()}`;
             if (!isNewTicker && expirySelect.value) {
                 url += `&expiration=${encodeURIComponent(expirySelect.value)}`;
             }
@@ -1241,4 +1241,3 @@
     </script>
 </body>
 </html>
-
