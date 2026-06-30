@@ -99,21 +99,21 @@ def get_flow():
 
             implied_forward = strike + (c_last - p_last) * np.exp(r * T)
 
-            c_gex = (gamma * c_oi * 100 * current_price) / 1_000_000
-            p_gex = (-gamma * p_oi * 100 * current_price) / 1_000_000
-            total_gex = c_gex + p_gex
+            c_gex_val = float((gamma * c_oi * 100 * current_price) / 1_000_000)
+            p_gex_val = float((-gamma * p_oi * 100 * current_price) / 1_000_000)
+            total_gex_val = float(c_gex_val + p_gex_val)
 
             data.append({
-                "strike": strike,
+                "strike": float(strike),
                 "call_vol": c_volume,
                 "put_vol": p_volume,
-                "gamma": round(gamma, 4),
-                "call_gex": round(c_gex, 2),
-                "put_gex": round(p_gex, 2),
-                "total_gex": round(total_gex, 2),
-                "abs_gross_gex": abs(c_gex) + abs(p_gex),
-                "implied_vol": round((c_iv + p_iv) / 2, 4),
-                "implied_forward": round(implied_forward, 2)
+                "gamma": float(round(gamma, 4)),
+                "call_gex": float(round(c_gex_val, 2)),
+                "put_gex": float(round(p_gex_val, 2)),
+                "total_gex": float(round(total_gex_val, 2)),
+                "abs_gross_gex": float(abs(c_gex_val) + abs(p_gex_val)),
+                "implied_vol": float(round((c_iv + p_iv) / 2, 4)),
+                "implied_forward": float(round(implied_forward, 2))
             })
 
         net_gex = sum(d['total_gex'] for d in data)
@@ -150,4 +150,5 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
+
 
