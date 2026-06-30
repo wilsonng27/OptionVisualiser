@@ -68,6 +68,22 @@ def build_liquidity_filtered_reference(data, spot):
 
     return filtered if filtered else near_spot
 
+
+def build_peak_payload(row, side):
+    if not row:
+        return None
+
+    return {
+        "strike": float(row["strike"]),
+        "gex": float(row[f"{side}_gex"]),
+        "call_oi": int(row["call_oi"]),
+        "put_oi": int(row["put_oi"]),
+        "total_oi": int(row["total_oi"]),
+        "call_vol": int(row["call_vol"]),
+        "put_vol": int(row["put_vol"]),
+        "total_volume": int(row["total_volume"]),
+    }
+
 def calculate_greeks(S, K, T, r, sigma, option_type):
     if T <= 0 or sigma <= 0:
         return 0, 0, 0, 0
@@ -157,14 +173,20 @@ def get_flow():
 
         net_gex = sum(d['total_gex'] for d in data)
         reference_strikes = build_liquidity_filtered_reference(data, current_price)
+        peak_call = None
+        peak_put = None
 
         if reference_strikes:
-            call_wall = max(reference_strikes, key=lambda x: x['call_gex'])['strike']
-            put_wall = min(reference_strikes, key=lambda x: x['put_gex'])['strike']
+            peak_call = max(reference_strikes, key=lambda x: x['call_gex'])
+            peak_put = min(reference_strikes, key=lambda x: x['put_gex'])
+            call_wall = peak_call['strike']
+            put_wall = peak_put['strike']
             zero_gamma = min(reference_strikes, key=lambda x: abs(x['total_gex']))['strike']
         else:
-            call_wall = max(data, key=lambda x: x['call_gex'])['strike'] if data else 0
-            put_wall = min(data, key=lambda x: x['put_gex'])['strike'] if data else 0
+            peak_call = max(data, key=lambda x: x['call_gex']) if data else None
+            peak_put = min(data, key=lambda x: x['put_gex']) if data else None
+            call_wall = peak_call['strike'] if peak_call else 0
+            put_wall = peak_put['strike'] if peak_put else 0
             zero_gamma = 0
 
         return jsonify({
@@ -176,6 +198,8 @@ def get_flow():
             "call_wall": call_wall,
             "put_wall": put_wall,
             "zero_gamma": zero_gamma,
+            "peak_call": build_peak_payload(peak_call, "call"),
+            "peak_put": build_peak_payload(peak_put, "put"),
             "data": data
         })
 
@@ -184,5 +208,4 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
-
 
