@@ -896,6 +896,27 @@
             return { lowerBound, upperBound, filteredData, rangePct: maxPct };
         }
 
+        function getReferenceStrikes(data, spot) {
+            if (!data.length || !spot) return [];
+
+            const nearSpot = data.filter((row) => row.strike >= spot * 0.88 && row.strike <= spot * 1.12);
+            if (!nearSpot.length) return [];
+
+            const avgGrossGex = nearSpot.reduce((sum, row) => sum + Number(row.abs_gross_gex || 0), 0) / nearSpot.length;
+            const avgTotalOi = nearSpot.reduce((sum, row) => sum + Number(row.total_oi || 0), 0) / nearSpot.length;
+            const avgTotalVolume = nearSpot.reduce((sum, row) => sum + Number(row.total_volume || 0), 0) / nearSpot.length;
+
+            const filtered = nearSpot.filter((row) => {
+                const gross = Number(row.abs_gross_gex || 0);
+                const totalOi = Number(row.total_oi || 0);
+                const totalVolume = Number(row.total_volume || 0);
+                return gross >= avgGrossGex * 0.35
+                    && (totalOi >= Math.max(100, avgTotalOi * 0.3) || totalVolume >= Math.max(10, avgTotalVolume * 0.3));
+            });
+
+            return filtered.length ? filtered : nearSpot;
+        }
+
         function updateMetricMeta() {
             currentMetric = metricSelect.value;
             const meta = metricMeta[currentMetric];
@@ -932,14 +953,15 @@
             document.getElementById('insightHeadline').className = `insight-value ${netGex >= 0 ? 'positive' : 'negative'}`;
             document.getElementById('displayedStrikes').textContent = filteredData.length ? `${filteredData.length} strikes` : '0 strikes';
 
-            const peakCall = [...filteredData].sort((a, b) => b.call_gex - a.call_gex)[0];
-            const peakPut = [...filteredData].sort((a, b) => a.put_gex - b.put_gex)[0];
+            const referenceStrikes = getReferenceStrikes(filteredData, currentSpot);
+            const peakCall = [...referenceStrikes].sort((a, b) => b.call_gex - a.call_gex)[0];
+            const peakPut = [...referenceStrikes].sort((a, b) => a.put_gex - b.put_gex)[0];
 
             document.getElementById('peakCall').textContent = peakCall
-                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.call_gex)}`
+                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.call_gex)} • OI ${Number(peakCall.total_oi || 0).toLocaleString()}`
                 : '--';
             document.getElementById('peakPut').textContent = peakPut
-                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.put_gex)}`
+                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.put_gex)} • OI ${Number(peakPut.total_oi || 0).toLocaleString()}`
                 : '--';
         }
 
