@@ -803,33 +803,16 @@
         const spotLinePlugin = {
             id: 'spotLine',
             afterDraw: (chart) => {
-                if (!currentSpot || !chart.data.labels.length) return;
+                if (!currentSpot) return;
                 if (!['volume', 'gex'].includes(currentMetric)) return;
 
                 const ctx = chart.ctx;
                 const xAxis = chart.scales.x;
                 const yAxis = chart.scales.y;
-                const labels = chart.data.labels.map(Number);
                 const spot = Number(currentSpot);
-                let xPixel = null;
+                const xPixel = xAxis.getPixelForValue(spot);
 
-                if (spot <= labels[0]) {
-                    xPixel = xAxis.getPixelForTick(0);
-                } else if (spot >= labels[labels.length - 1]) {
-                    xPixel = xAxis.getPixelForTick(labels.length - 1);
-                } else {
-                    for (let i = 0; i < labels.length - 1; i += 1) {
-                        if (spot >= labels[i] && spot <= labels[i + 1]) {
-                            const ratio = (spot - labels[i]) / (labels[i + 1] - labels[i]);
-                            const px1 = xAxis.getPixelForTick(i);
-                            const px2 = xAxis.getPixelForTick(i + 1);
-                            xPixel = px1 + ((px2 - px1) * ratio);
-                            break;
-                        }
-                    }
-                }
-
-                if (xPixel === null) return;
+                if (!Number.isFinite(xPixel) || xPixel < xAxis.left || xPixel > xAxis.right) return;
 
                 ctx.save();
                 ctx.beginPath();
@@ -1021,15 +1004,24 @@
         function renderChart(result) {
             const ctx = document.getElementById('flowChart').getContext('2d');
             const { filteredData, rangePct } = getDisplayRange(chainData, currentSpot, currentMetric);
-            const strikes = filteredData.map((row) => row.strike);
             emptyState.style.display = filteredData.length ? 'none' : 'grid';
             document.getElementById('dataWindow').textContent = `Window: spot ±${(rangePct * 100).toFixed(0)}%`;
+
+            const xValues = filteredData.map((row) => Number(row.strike));
+            const minStrike = xValues.length ? Math.min(...xValues) : 0;
+            const maxStrike = xValues.length ? Math.max(...xValues) : 0;
 
             let datasets = [];
             let scales = {
                 x: {
+                    type: 'linear',
+                    min: minStrike,
+                    max: maxStrike,
                     grid: { display: false },
-                    ticks: { color: '#9fb0c8' }
+                    ticks: {
+                        color: '#9fb0c8',
+                        callback: (value) => formatCurrency(value, 0)
+                    }
                 },
                 y: {
                     grid: { color: 'rgba(255,255,255,0.08)' },
@@ -1041,13 +1033,13 @@
                 datasets = [
                     {
                         label: 'Call volume',
-                        data: filteredData.map((row) => row.call_vol),
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.call_vol })),
                         backgroundColor: 'rgba(52, 211, 153, 0.82)',
                         borderRadius: 6
                     },
                     {
                         label: 'Put volume',
-                        data: filteredData.map((row) => row.put_vol),
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.put_vol })),
                         backgroundColor: 'rgba(251, 113, 133, 0.82)',
                         borderRadius: 6
                     }
@@ -1062,10 +1054,10 @@
                     {
                         type: 'bar',
                         label: 'Call GEX',
-                        data: callSeries,
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.call_gex })),
                         backgroundColor: 'rgba(52, 211, 153, 0.82)',
-                        borderColor: (context) => context.raw === maxCall ? '#d1fae5' : 'transparent',
-                        borderWidth: (context) => context.raw === maxCall ? 2 : 0,
+                        borderColor: (context) => context.raw.y === maxCall ? '#d1fae5' : 'transparent',
+                        borderWidth: (context) => context.raw.y === maxCall ? 2 : 0,
                         borderRadius: 6,
                         barPercentage: 0.94,
                         categoryPercentage: 0.86
@@ -1073,10 +1065,10 @@
                     {
                         type: 'bar',
                         label: 'Put GEX',
-                        data: putSeries,
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.put_gex })),
                         backgroundColor: 'rgba(251, 113, 133, 0.82)',
-                        borderColor: (context) => context.raw === minPut ? '#ffe4e6' : 'transparent',
-                        borderWidth: (context) => context.raw === minPut ? 2 : 0,
+                        borderColor: (context) => context.raw.y === minPut ? '#ffe4e6' : 'transparent',
+                        borderWidth: (context) => context.raw.y === minPut ? 2 : 0,
                         borderRadius: 6,
                         barPercentage: 0.94,
                         categoryPercentage: 0.86
@@ -1084,9 +1076,15 @@
                 ];
                 scales = {
                     x: {
+                        type: 'linear',
+                        min: minStrike,
+                        max: maxStrike,
                         stacked: true,
                         grid: { display: false },
-                        ticks: { color: '#9fb0c8' }
+                        ticks: {
+                            color: '#9fb0c8',
+                            callback: (value) => formatCurrency(value, 0)
+                        }
                     },
                     y: {
                         stacked: true,
@@ -1099,7 +1097,7 @@
                     {
                         type: 'line',
                         label: 'Average IV',
-                        data: filteredData.map((row) => row.implied_vol),
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.implied_vol })),
                         borderColor: '#7dd3fc',
                         backgroundColor: 'rgba(125, 211, 252, 0.16)',
                         fill: true,
@@ -1113,7 +1111,7 @@
                     {
                         type: 'line',
                         label: 'Synthetic forward',
-                        data: filteredData.map((row) => row.implied_forward),
+                        data: filteredData.map((row) => ({ x: row.strike, y: row.implied_forward })),
                         borderColor: '#f59e0b',
                         backgroundColor: 'rgba(245, 158, 11, 0.14)',
                         fill: false,
@@ -1123,7 +1121,7 @@
                     {
                         type: 'line',
                         label: 'Spot price',
-                        data: Array(strikes.length).fill(currentSpot),
+                        data: filteredData.map((row) => ({ x: row.strike, y: currentSpot })),
                         borderColor: 'rgba(244, 247, 251, 0.42)',
                         borderDash: [6, 6],
                         pointRadius: 0
@@ -1137,7 +1135,7 @@
 
             chartInstance = new Chart(ctx, {
                 type: 'bar',
-                data: { labels: strikes, datasets },
+                data: { datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -1153,6 +1151,7 @@
                         mode: 'index',
                         intersect: false
                     },
+                    parsing: false,
                     plugins: {
                         legend: {
                             labels: {
@@ -1211,3 +1210,4 @@
     </script>
 </body>
 </html>
+
