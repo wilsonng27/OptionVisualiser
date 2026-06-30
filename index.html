@@ -953,15 +953,14 @@
             document.getElementById('insightHeadline').className = `insight-value ${netGex >= 0 ? 'positive' : 'negative'}`;
             document.getElementById('displayedStrikes').textContent = filteredData.length ? `${filteredData.length} strikes` : '0 strikes';
 
-            const referenceStrikes = getReferenceStrikes(filteredData, currentSpot);
-            const peakCall = [...referenceStrikes].sort((a, b) => b.call_gex - a.call_gex)[0];
-            const peakPut = [...referenceStrikes].sort((a, b) => a.put_gex - b.put_gex)[0];
+            const peakCall = result.peak_call;
+            const peakPut = result.peak_put;
 
             document.getElementById('peakCall').textContent = peakCall
-                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.call_gex)} • OI ${Number(peakCall.total_oi || 0).toLocaleString()}`
+                ? `${formatCurrency(peakCall.strike, 0)} • ${formatCompactMillions(peakCall.gex)} • OI ${Number(peakCall.total_oi || 0).toLocaleString()}`
                 : '--';
             document.getElementById('peakPut').textContent = peakPut
-                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.put_gex)} • OI ${Number(peakPut.total_oi || 0).toLocaleString()}`
+                ? `${formatCurrency(peakPut.strike, 0)} • ${formatCompactMillions(peakPut.gex)} • OI ${Number(peakPut.total_oi || 0).toLocaleString()}`
                 : '--';
         }
 
@@ -1232,4 +1231,3 @@
     </script>
 </body>
 </html>
-
