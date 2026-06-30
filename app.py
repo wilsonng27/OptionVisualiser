@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from scipy.stats import norm
 
@@ -234,6 +234,11 @@ def calculate_greeks(S, K, T, r, sigma, option_type):
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"ok": True})
+
+
+@app.route('/', methods=['GET'])
+def home():
+    return send_file('index.html')
 
 @app.route('/api/flow', methods=['GET'])
 def get_flow():
