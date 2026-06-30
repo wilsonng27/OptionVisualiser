@@ -1,7 +1,0 @@
-flask
-flask-cors
-yfinance
-numpy
-scipy
-gunicorn
-yfinance>=0.2.40
