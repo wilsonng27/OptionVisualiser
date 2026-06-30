@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import numpy as np
+import requests
 import yfinance as yf
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -8,6 +9,15 @@ from scipy.stats import norm
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+session = requests.Session()
+session.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+})
 
 
 def safe_number(value, default=0.0):
@@ -57,7 +67,7 @@ def calculate_greeks(S, K, T, r, sigma, option_type):
 def get_flow():
     ticker_symbol = request.args.get('ticker', 'SPY').upper()
     requested_exp = request.args.get('expiration', None)
-    ticker = yf.Ticker(ticker_symbol)
+    ticker = yf.Ticker(ticker_symbol, session=session)
 
     try:
         current_price = get_current_price(ticker)
