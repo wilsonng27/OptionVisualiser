@@ -7,7 +7,7 @@ from flask_cors import CORS
 from scipy.stats import norm
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "https://option-visualiser.vercel.app"}})
 
 
 def safe_number(value, default=0.0):
@@ -150,3 +150,4 @@ def get_flow():
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
+
