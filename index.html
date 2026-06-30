@@ -1181,7 +1181,9 @@
                         mode: 'index',
                         intersect: false
                     },
-                    parsing: currentMetric !== 'gex',
+                    // GEX mode uses plain numeric arrays with category labels.
+                    // The other modes use explicit {x, y} points.
+                    parsing: currentMetric === 'gex',
                     plugins: {
                         legend: {
                             labels: {
@@ -1240,4 +1242,5 @@
     </script>
 </body>
 </html>
+
 
