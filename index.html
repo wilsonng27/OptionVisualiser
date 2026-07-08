@@ -1123,11 +1123,17 @@
                     }
                 };
             } else if (currentMetric === 'iv') {
+                const avgTotalOi = filteredData.reduce((sum, row) => sum + Number(row.total_oi || 0), 0) / (filteredData.length || 1);
+                
+                const ivData = filteredData
+                    .filter((row) => row.implied_vol > 0 && (row.total_oi > Math.max(10, avgTotalOi * 0.05) || row.total_volume > 5))
+                    .map((row) => ({ x: row.strike, y: row.implied_vol }));
+
                 datasets = [
                     {
                         type: 'line',
-                        label: 'Average IV',
-                        data: filteredData.map((row) => ({ x: row.strike, y: row.implied_vol })),
+                        label: 'Implied Volatility',
+                        data: ivData,
                         borderColor: '#7dd3fc',
                         backgroundColor: 'rgba(125, 211, 252, 0.16)',
                         fill: true,
