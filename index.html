@@ -878,9 +878,11 @@
                 return { lowerBound, upperBound, filteredData, rangePct: 0.025 };
             }
 
-            const basePct = metric === 'gex' ? 0.12 : 0.15;
-            const minStrikeCount = metric === 'gex' ? 31 : 25;
-            const maxPct = metric === 'gex' ? 0.22 : 0.28;
+            // IV curves suffer from minimum-tick distortion (the "V" shape) at deep OTM strikes.
+            // We use a tighter base window (e.g. ±8%) for IV, and allow up to ±15% for volume.
+            const basePct = metric === 'iv' ? 0.08 : 0.15;
+            const minStrikeCount = 25;
+            const maxPct = metric === 'iv' ? 0.12 : 0.28;
 
             let rangePct = basePct;
             let filteredData = [];
@@ -894,7 +896,7 @@
                     return { lowerBound, upperBound, filteredData, rangePct };
                 }
 
-                rangePct = Math.min(rangePct + 0.03, maxPct);
+                rangePct = Math.min(rangePct + 0.02, maxPct);
             }
 
             const lowerBound = spot * (1 - maxPct);
@@ -1248,5 +1250,3 @@
     </script>
 </body>
 </html>
-
-
