@@ -320,13 +320,14 @@ def get_flow():
             total_gex_val = float(c_gex_val + p_gex_val)
 
             if strike < current_price:
-                implied_vol = p_iv if p_iv > 0.01 else c_iv
+                implied_vol = p_iv
             else:
-                implied_vol = c_iv if c_iv > 0.01 else p_iv
+                implied_vol = c_iv
                 
-            if implied_vol <= 0.01 or implied_vol > 5.0:
-                valid_ivs = [iv for iv in (c_iv, p_iv) if 0.01 < iv < 5.0]
-                implied_vol = sum(valid_ivs) / len(valid_ivs) if valid_ivs else 0.0
+            # If the OTM option has missing or absurd IV, do not fall back to the deep ITM option.
+            # Deep ITM options have wide spreads and their calculated IV is often a massive mathematical artifact.
+            if implied_vol <= 0.01 or implied_vol > 3.5:
+                implied_vol = 0.0
 
             data.append({
                 "strike": float(strike),
