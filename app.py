@@ -319,6 +319,15 @@ def get_flow():
             p_gex_val = float((-p_gamma * p_oi * 100 * current_price) / 1_000_000)
             total_gex_val = float(c_gex_val + p_gex_val)
 
+            if strike < current_price:
+                implied_vol = p_iv if p_iv > 0.01 else c_iv
+            else:
+                implied_vol = c_iv if c_iv > 0.01 else p_iv
+                
+            if implied_vol <= 0.01 or implied_vol > 5.0:
+                valid_ivs = [iv for iv in (c_iv, p_iv) if 0.01 < iv < 5.0]
+                implied_vol = sum(valid_ivs) / len(valid_ivs) if valid_ivs else 0.0
+
             data.append({
                 "strike": float(strike),
                 "call_vol": c_volume,
@@ -332,7 +341,7 @@ def get_flow():
                 "put_gex": float(round(p_gex_val, 2)),
                 "total_gex": float(round(total_gex_val, 2)),
                 "abs_gross_gex": float(abs(c_gex_val) + abs(p_gex_val)),
-                "implied_vol": float(round((c_iv + p_iv) / 2, 4)),
+                "implied_vol": float(round(implied_vol, 4)),
                 "implied_forward": float(round(implied_forward, 2))
             })
         print(
